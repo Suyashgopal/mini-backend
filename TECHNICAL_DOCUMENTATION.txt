@@ -1,0 +1,1237 @@
+TECHNICAL DOCUMENTATION REPORT
+============================================================
+
+1. PROJECT OVERVIEW
+
+Project purpose:
+The Label Verification OCR Backend is a Flask-based API system designed for optical character recognition (OCR) and document verification, specifically targeting pharmaceutical and medical label compliance. The system extracts text from images and PDFs, processes it through AI models, and compares extracted content against verified standards to ensure regulatory compliance.
+
+Core business logic:
+- Document upload and processing (images: PNG, JPG, JPEG, BMP, TIFF; PDFs)
+- Text extraction using dual OCR engines (Ollama LLM primary, Tesseract fallback)
+- Text normalization and processing
+- Creation of verified control templates from approved documents
+- Text similarity comparison between new documents and verified standards
+- Compliance scoring with PASS/FAIL determination based on 95% similarity threshold
+- Medical text structural validation using deterministic rules
+- Database storage of documents, OCR results, verified controls, and comparison results
+
+AI integration purpose (Ollama usage):
+Ollama serves as the primary OCR engine using the glm-ocr:latest model. The AI model processes images and PDF pages to extract text content with higher accuracy than traditional OCR. The system includes fallback logic to Tesseract when Ollama is unavailable or fails. Ollama is accessed via HTTP API calls to localhost:11434 with base64-encoded image data and simple text extraction prompts.
+
+Frontend stack:
+No frontend components exist. This is a pure backend API service designed to be consumed by external applications via REST endpoints.
+
+Backend stack:
+- Flask 3.0.0 - Web framework and API server
+- Flask-SQLAlchemy 3.1.1 - ORM for database operations
+- Flask-CORS 4.0.0 - Cross-origin resource sharing
+- SQLAlchemy 2.0.23 - Database toolkit
+- Werkzeug 3.0.1 - WSGI utilities
+
+Database used:
+SQLite database (label_verification.db) with SQLAlchemy ORM. Database contains four main tables: documents, ocr_results, verified_controls, and comparison_results.
+
+Architecture pattern:
+Modular Monolith with layered architecture:
+- Presentation Layer: Flask routes (Blueprints)
+- Business Logic Layer: Services (OCR, Comparison)
+- Data Access Layer: SQLAlchemy models
+- Configuration Layer: Environment-based config management
+
+Deployment assumptions:
+- Single-server deployment on localhost:5000
+- External dependencies: Ollama server running on localhost:11434, Poppler for PDF processing, optional Tesseract OCR
+- File system storage for uploads in local directory
+- SQLite database file storage
+
+2. COMPLETE FILE & FOLDER STRUCTURE
+
+Full folder tree:
+mini-backend-main/
+├── src/
+│   ├── __init__.py
+│   ├── app.py                    # Main Flask application
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── config.py            # Configuration settings
+│   │   └── database.py          # Database initialization
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── database.py          # Database models
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── ocr_routes.py        # OCR API endpoints
+│   │   ├── verified_routes.py   # Verified control endpoints
+│   │   └── comparison_routes.py # Text comparison endpoints
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── ollama_ocr_service.py # Ollama OCR implementation
+│   │   ├── comparison_service.py # Text comparison logic
+│   │   └── medical_validation_service.py # Medical text structural validation
+│   └── utils/
+│       ├── __init__.py
+│       └── interfaces.py        # Base OCR service interface
+├── tests/
+│   ├── __init__.py
+│   └── unit/
+│       ├── test_api_endpoints.py
+│       ├── test_backward_compatibility.py
+│       ├── test_error_handling.py
+│       ├── test_ocr.py
+│       ├── test_ollama_extract.py
+│       ├── test_ollama_integration.py
+│       ├── test_ollama_ocr_properties.py
+│       ├── test_performance_large_documents.py
+│       ├── test_smart_chunking.py
+│       ├── test_smart_chunking_properties.py
+│       └── test_tesseract.py
+├── scripts/
+│   ├── setup.py                 # Database setup script
+│   ├── reset_db.py              # Database reset script
+│   ├── example_usage.py         # Usage examples
+│   └── quick_test.py            # Quick testing script
+├── assets/
+│   ├── samples/
+│   │   ├── images/              # Sample image files
+│   │   ├── pdfs/                # Sample PDF files
+│   │   └── text/                # Sample text files
+│   └── uploads/                 # Runtime upload directory
+├── docs/
+│   └── extracted_text.txt      # Documentation text
+├── .env.example                 # Environment variables template
+├── .gitignore                   # Git ignore rules
+├── requirements.txt             # Python dependencies
+├── README.md                    # Project documentation
+├── start_server.bat            # Windows startup script
+└── start_server.sh             # Unix startup script
+
+Explanation of each folder:
+- src/: Main application source code
+- src/config/: Configuration management and database initialization
+- src/models/: SQLAlchemy database models
+- src/routes/: Flask Blueprint route handlers
+- src/services/: Business logic and external service integrations
+- src/utils/: Utility classes and interfaces
+- tests/: Test files organized by type
+- scripts/: Utility and setup scripts
+- assets/: Static files including samples and upload directory
+- docs/: Documentation files
+
+Explanation of each file:
+- src/app.py: Flask application entry point with middleware, routes, and error handling
+- src/config/config.py: Environment-based configuration management
+- src/config/database.py: SQLAlchemy database instance initialization
+- src/models/database.py: Database model definitions (Document, OCRResult, VerifiedControl, ComparisonResult)
+- src/routes/ocr_routes.py: OCR processing endpoints for images and PDFs
+- src/routes/verified_routes.py: CRUD operations for verified controls
+- src/routes/comparison_routes.py: Text comparison and analysis endpoints
+- src/services/ollama_ocr_service.py: Ollama OCR service implementation
+- src/services/comparison_service.py: Text similarity comparison logic
+- src/services/medical_validation_service.py: Medical text structural validation service
+- src/utils/interfaces.py: Abstract base class for OCR services
+- requirements.txt: Python package dependencies
+- README.md: Project documentation and setup instructions
+
+Role in system architecture:
+- src/app.py: Application orchestration and request routing
+- src/config/: Configuration management and database connection
+- src/models/: Data persistence layer
+- src/routes/: API endpoint definitions and request handling
+- src/services/: Business logic and external integrations
+- src/utils/: Shared utilities and contracts
+
+3. BACKEND DOCUMENTATION
+
+3.1 Application Entry Point
+
+Main file: src/app.py
+
+App initialization process:
+1. Windows Poppler path detection for PDF processing
+2. Flask application instance creation
+3. CORS middleware registration
+4. Configuration loading from hardcoded values and environment
+5. Database initialization and table creation
+6. Upload directory creation
+7. Blueprint registration for routes
+8. Global error handler registration
+9. Health check route definition
+
+Middleware registration:
+- Flask-CORS: Enables cross-origin requests from any origin
+- Global error handler: Catches all exceptions and returns JSON error responses
+
+Routing registration:
+- ocr_routes: Blueprint with prefix /api/ocr
+- verified_routes: Blueprint with prefix /api/verified
+- comparison_routes: Blueprint with prefix /api/comparison
+
+Config loading:
+Configuration is hardcoded in app.py with values:
+- SQLALCHEMY_DATABASE_URI: sqlite:///label_verification.db
+- SQLALCHEMY_TRACK_MODIFICATIONS: False
+- UPLOAD_FOLDER: uploads
+- MAX_CONTENT_LENGTH: 16MB
+- ALLOWED_EXTENSIONS: png, jpg, jpeg, pdf, tiff
+
+3.2 API Layer
+
+For each endpoint:
+
+Route path: /api/ocr/image
+HTTP method: POST
+Request schema: multipart/form-data with file field
+Response schema: JSON with success boolean and data object
+Validation logic: Checks for file presence and non-empty filename
+Authentication requirement: None
+Called services: OllamaOCRService.process_image()
+Error handling logic: Generic exception handling with 500 status
+Full execution flow:
+1. Validate file presence in request
+2. Secure filename and extract extension
+3. Save to temporary file
+4. Call OllamaOCRService.process_image()
+5. Return JSON response with extracted text
+6. Clean up temporary file in finally block
+
+Route path: /api/ocr/pdf
+HTTP method: POST
+Request schema: multipart/form-data with file field
+Response schema: JSON with success boolean and data object
+Validation logic: Checks for file presence, non-empty filename, and .pdf extension
+Authentication requirement: None
+Called services: OllamaOCRService.process_pdf()
+Error handling logic: Generic exception handling with 500 status
+Full execution flow:
+1. Validate file presence and PDF extension
+2. Secure filename
+3. Save to temporary file
+4. Call OllamaOCRService.process_pdf()
+5. Return JSON response with extracted text
+6. Clean up temporary file in finally block
+
+Route path: /api/verified/create/<int:ocr_result_id>
+HTTP method: POST
+Request schema: JSON with control_name and status fields
+Response schema: JSON with success boolean and created control data
+Validation logic: JSON content validation, required control_name, status validation
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Database transaction rollback on exception
+Full execution flow:
+1. Validate JSON request format
+2. Retrieve OCRResult by ID (404 if not found)
+3. Extract and validate control_name and status
+4. Create VerifiedControl with OCR result data
+5. Save to database with transaction
+6. Return created control data
+
+Route path: /api/verified/
+HTTP method: GET
+Request schema: Query parameters page and per_page
+Response schema: JSON with success boolean, data array, and pagination object
+Validation logic: Page and per_page conversion to integers with defaults
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Generic exception handling
+Full execution flow:
+1. Extract pagination parameters with defaults
+2. Query VerifiedControl ordered by approved_at desc
+3. Apply pagination
+4. Return paginated results with metadata
+
+Route path: /api/verified/<int:control_id>
+HTTP method: GET
+Request schema: Path parameter control_id
+Response schema: JSON with success boolean and control data
+Validation logic: Control ID validation through get_or_404
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Generic exception handling
+Full execution flow:
+1. Retrieve VerifiedControl by ID (404 if not found)
+2. Return control data as JSON
+
+Route path: /api/verified/<int:control_id>
+HTTP method: PUT
+Request schema: JSON with optional control_name, verified_text, and status fields
+Response schema: JSON with success boolean and updated control data
+Validation logic: JSON content validation, field-specific validation
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Database transaction rollback on exception
+Full execution flow:
+1. Validate JSON request format
+2. Retrieve VerifiedControl by ID (404 if not found)
+3. Update fields based on request data
+4. Validate updated values
+5. Save to database with transaction
+6. Return updated control data
+
+Route path: /api/verified/<int:control_id>
+HTTP method: DELETE
+Request schema: Path parameter control_id
+Response schema: JSON with success boolean and success message
+Validation logic: Control ID validation through get_or_404
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Database transaction rollback on exception
+Full execution flow:
+1. Retrieve VerifiedControl by ID (404 if not found)
+2. Delete from database with transaction
+3. Return success message
+
+Route path: /api/comparison/run/<int:control_id>/<int:ocr_result_id>
+HTTP method: POST
+Request schema: Path parameters control_id and ocr_result_id
+Response schema: JSON with success boolean and comparison result data
+Validation logic: ID validation through get_or_404
+Authentication requirement: None
+Called services: ComparisonService.compare_texts()
+Error handling logic: Generic exception handling
+Full execution flow:
+1. Retrieve VerifiedControl and OCRResult by IDs (404 if not found)
+2. Call ComparisonService.compare_texts() with verified and extracted text
+3. Create ComparisonResult with similarity data
+4. Save to database
+5. Return comparison result data
+
+Route path: /api/comparison/result/<int:comparison_id>
+HTTP method: GET
+Request schema: Path parameter comparison_id
+Response schema: JSON with success boolean and comparison result data
+Validation logic: Comparison ID validation through get_or_404
+Authentication requirement: None
+Called services: None (direct database operations)
+Error handling logic: Generic exception handling
+Full execution flow:
+1. Retrieve ComparisonResult by ID (404 if not found)
+2. Return comparison result data as JSON
+
+Route path: /health
+HTTP method: GET
+Request schema: None
+Response schema: JSON with status and message
+Validation logic: None
+Authentication requirement: None
+Called services: None
+Error handling logic: None
+Full execution flow:
+1. Return static health check response
+
+3.3 Services Layer
+
+For every service file:
+
+File: src/services/ollama_ocr_service.py
+Responsibility: OCR text extraction using Ollama LLM with image preprocessing
+Business logic implemented:
+- Image preprocessing with OpenCV (resize, grayscale, adaptive threshold)
+- Base64 encoding for image data
+- HTTP API calls to Ollama server
+- Retry logic with configurable attempts and delays
+- PDF page-by-page processing using pdf2image
+- Timeout handling for CPU-friendly operations
+External API calls: HTTP POST to Ollama API endpoint
+Ollama interactions:
+- Model initialization with endpoint and model name configuration
+- Prompt construction: "Extract all text from this image. Return only the extracted text."
+- Non-streaming responses with JSON parsing
+- Error handling for connection timeouts and API failures
+Model invocation logic:
+- Single API call per image/page
+- Simple text extraction prompt
+- No system prompts or context management
+Streaming handling: None (uses stream=False)
+Token usage handling: None (not tracked)
+Dependencies used: requests, base64, time, logging, cv2, numpy, PIL, pdf2image
+
+File: src/services/comparison_service.py
+Responsibility: Text similarity comparison and deviation analysis
+Business logic implemented:
+- Text normalization (whitespace cleanup)
+- Sequence matching using difflib
+- Similarity percentage calculation
+- Deviation detection (added/removed words)
+- Pass/fail determination based on 95% threshold
+External API calls: None
+Ollama interactions: None
+Model invocation logic: None
+Streaming handling: None
+Token usage handling: None
+Dependencies used: difflib, json
+
+File: src/services/medical_validation_service.py
+Responsibility: Medical text structural validation using deterministic rules
+Business logic implemented:
+- Dosage format validation using regex patterns (mg, ml, g, mcg, tablets, capsules)
+- Expiry date validation (MM/YYYY, DD/MM/YYYY, Month YYYY formats)
+- Batch/Lot number validation (label presence + alphanumeric pattern)
+- Manufacturer presence detection (Manufactured by, Marketed by, Distributed by)
+- Drug name heuristic validation (capitalized word followed by dosage)
+- Authenticity scoring system (20 points per validation, 70+ threshold)
+External API calls: None
+Ollama interactions: None
+Model invocation logic: None
+Streaming handling: None
+Token usage handling: None
+Dependencies used: re, typing
+
+3.4 Ollama / AI Integration
+
+Document in detail:
+
+Model name(s) used: glm-ocr:latest (default, configurable via OLLAMA_MODEL)
+
+How model is initialized:
+- OllamaOCRService constructor takes endpoint, model_name, timeout, max_retries, retry_delay
+- API endpoint constructed as f"{ollama_endpoint}/api/generate"
+- No authentication or special headers required
+
+Prompt templates:
+- Single prompt: "Extract all text from this image. Return only the extracted text."
+- No system prompts or few-shot examples
+- No context chaining or memory management
+
+Temperature / parameters: None specified (uses Ollama defaults)
+
+Context handling: Single image per request, no conversation context
+
+Memory management: None (stateless service)
+
+Streaming vs non-streaming responses: Non-streaming (stream: false)
+
+Error handling for model calls:
+- Retry logic with configurable max_retries (default 3)
+- Timeout handling with configurable timeout (default 600s)
+- Connection error handling with retry delay
+- Exception raising after all retries exhausted
+- Warning logging for failed attempts
+
+Fallback logic: None in service layer (fallback handled at route level)
+
+Step-by-step how user request reaches LLM and response returned:
+1. User uploads image/PDF via API endpoint
+2. Route handler saves file to temporary location
+3. OllamaOCRService.process_image() or process_pdf() called
+4. Image preprocessing: resize, grayscale, adaptive threshold
+5. Image converted to base64 string
+6. HTTP POST request to Ollama /api/generate with JSON payload
+7. Ollama processes image and returns text response
+8. Service extracts text from response JSON
+9. Temporary file cleaned up
+10. Text returned through API response
+
+3.5 Database Layer
+
+ORM used: SQLAlchemy 2.0.23 with Flask-SQLAlchemy 3.1.1
+
+Models and schema:
+- Document: id, filename, file_path, file_type, file_size, uploaded_at
+- OCRResult: id, document_id, extracted_text, translated_text, ocr_engine, model_name, processing_time, processed_at
+- VerifiedControl: id, control_name, source_document_id, verified_text, status, approved_at
+- ComparisonResult: id, verified_control_id, ocr_result_id, match_percentage, deviations, status, compared_at
+
+Relationships:
+- Document -> OCRResult (one-to-many, cascade delete)
+- Document -> VerifiedControl (one-to-many, cascade delete)
+- VerifiedControl -> ComparisonResult (one-to-many, cascade delete)
+- OCRResult -> ComparisonResult (one-to-many, cascade delete)
+
+Migrations: None (uses db.create_all() for table creation)
+
+Query logic:
+- Basic CRUD operations using SQLAlchemy ORM
+- Pagination with Flask-SQLAlchemy paginate() method
+- Filtering by foreign keys and ordering by timestamps
+
+Indexes:
+- Foreign key columns have indexes
+- No explicit index definitions
+
+Transactions:
+- Automatic transaction management with db.session.commit()
+- Manual rollback on exceptions in routes
+
+Connection handling:
+- Single SQLite database connection
+- Connection managed by Flask-SQLAlchemy
+
+4. FRONTEND DOCUMENTATION
+
+Frontend stack: None (pure backend API)
+
+5. FUNCTION-BY-FUNCTION BREAKDOWN
+
+For EVERY function in the project:
+
+Function: health_check
+File location: src/app.py:60-65
+Purpose: Health check endpoint for API monitoring
+Parameters: None
+Return value: JSON response with status and message, HTTP 200
+Internal logic explanation: Returns static health status
+Dependencies used: Flask jsonify
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: handle_exception
+File location: src/app.py:71-76
+Purpose: Global exception handler for all routes
+Parameters: e (Exception)
+Return value: JSON error response, HTTP 500
+Internal logic explanation: Converts any exception to JSON error format
+Dependencies used: Flask jsonify
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: ocr_image
+File location: src/routes/ocr_routes.py:20-45
+Purpose: Process image file for OCR text extraction
+Parameters: None (uses Flask request)
+Return value: JSON response with OCR result
+Internal logic explanation:
+1. Validate file presence in request
+2. Extract and secure filename
+3. Save to temporary file
+4. Call OllamaOCRService.process_image()
+5. Return result as JSON
+6. Clean up temporary file
+Dependencies used: Flask, werkzeug, os, tempfile, OllamaOCRService
+Side effects: Temporary file creation and deletion
+Database interaction: None
+External API interaction: Ollama API
+AI interaction: Yes (Ollama OCR)
+
+Function: ocr_pdf
+File location: src/routes/ocr_routes.py:50-77
+Purpose: Process PDF file for OCR text extraction
+Parameters: None (uses Flask request)
+Return value: JSON response with OCR result
+Internal logic explanation:
+1. Validate file presence and PDF extension
+2. Extract and secure filename
+3. Save to temporary file
+4. Call OllamaOCRService.process_pdf()
+5. Return result as JSON
+6. Clean up temporary file
+Dependencies used: Flask, werkzeug, os, tempfile, OllamaOCRService
+Side effects: Temporary file creation and deletion
+Database interaction: None
+External API interaction: Ollama API
+AI interaction: Yes (Ollama OCR)
+
+Function: create_verified_control
+File location: src/routes/verified_routes.py:11-46
+Purpose: Create verified control from OCR result
+Parameters: ocr_result_id (int)
+Return value: JSON response with created control data, HTTP 201
+Internal logic explanation:
+1. Validate JSON request format
+2. Retrieve OCRResult by ID
+3. Extract control_name and status from request
+4. Validate required fields
+5. Create VerifiedControl with OCR result data
+6. Save to database
+7. Return created control
+Dependencies used: Flask, database, models
+Side effects: Database record creation
+Database interaction: Create VerifiedControl record
+External API interaction: None
+AI interaction: None
+
+Function: list_verified_controls
+File location: src/routes/verified_routes.py:52-74
+Purpose: List verified controls with pagination
+Parameters: None (uses Flask request args)
+Return value: JSON response with paginated control list
+Internal logic explanation:
+1. Extract page and per_page parameters with defaults
+2. Query VerifiedControl ordered by approved_at desc
+3. Apply pagination
+4. Return paginated results
+Dependencies used: Flask, database, models
+Side effects: None
+Database interaction: Query VerifiedControl with pagination
+External API interaction: None
+AI interaction: None
+
+Function: get_verified_control
+File location: src/routes/verified_routes.py:80-86
+Purpose: Get single verified control by ID
+Parameters: control_id (int)
+Return value: JSON response with control data
+Internal logic explanation:
+1. Retrieve VerifiedControl by ID (404 if not found)
+2. Return control data as JSON
+Dependencies used: Flask, database, models
+Side effects: None
+Database interaction: Retrieve VerifiedControl by ID
+External API interaction: None
+AI interaction: None
+
+Function: update_verified_control
+File location: src/routes/verified_routes.py:92-127
+Purpose: Update verified control fields
+Parameters: control_id (int)
+Return value: JSON response with updated control data
+Internal logic explanation:
+1. Validate JSON request format
+2. Retrieve VerifiedControl by ID
+3. Update fields based on request data
+4. Validate updated values
+5. Save to database
+6. Return updated control
+Dependencies used: Flask, database, models
+Side effects: Database record update
+Database interaction: Update VerifiedControl record
+External API interaction: None
+AI interaction: None
+
+Function: delete_verified_control
+File location: src/routes/verified_routes.py:133-148
+Purpose: Delete verified control
+Parameters: control_id (int)
+Return value: JSON response with success message
+Internal logic explanation:
+1. Retrieve VerifiedControl by ID
+2. Delete from database
+3. Return success message
+Dependencies used: Flask, database, models
+Side effects: Database record deletion
+Database interaction: Delete VerifiedControl record
+External API interaction: None
+AI interaction: None
+
+Function: run_comparison
+File location: src/routes/comparison_routes.py:17-50
+Purpose: Compare verified control with OCR result and validate medical text structure
+Parameters: control_id (int), ocr_result_id (int)
+Return value: JSON response with comparison result and medical validation
+Internal logic explanation:
+1. Retrieve VerifiedControl and OCRResult by IDs
+2. Call ComparisonService.compare_texts()
+3. Create ComparisonResult with similarity data
+4. Save to database
+5. Call MedicalValidationService.validate_text() on extracted text
+6. Add medical validation to response data
+7. Return comparison result with medical validation
+Dependencies used: Flask, database, models, ComparisonService, MedicalValidationService, json
+Side effects: Database record creation
+Database interaction: Create ComparisonResult record
+External API interaction: None
+AI interaction: None
+
+Function: get_comparison_result
+File location: src/routes/comparison_routes.py:51-62
+Purpose: Get comparison result by ID
+Parameters: comparison_id (int)
+Return value: JSON response with comparison result data
+Internal logic explanation:
+1. Retrieve ComparisonResult by ID
+2. Return comparison result data
+Dependencies used: Flask, database, models
+Side effects: None
+Database interaction: Retrieve ComparisonResult by ID
+External API interaction: None
+AI interaction: None
+
+Function: OllamaOCRService.__init__
+File location: src/services/ollama_ocr_service.py:27-41
+Purpose: Initialize Ollama OCR service with configuration
+Parameters: ollama_endpoint (str), model_name (str), timeout (int), max_retries (int), retry_delay (int)
+Return value: None
+Internal logic explanation: Store configuration parameters and construct API endpoint URL
+Dependencies used: None
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: OllamaOCRService.process_image
+File location: src/services/ollama_ocr_service.py:46-57
+Purpose: Process single image for OCR text extraction
+Parameters: image_path (str)
+Return value: Dict with extracted_text, processing_time, model_name
+Internal logic explanation:
+1. Record start time
+2. Preprocess image
+3. Encode to base64
+4. Send to Ollama
+5. Calculate processing time
+6. Return result dictionary
+Dependencies used: time, base64, internal methods
+Side effects: None
+Database interaction: None
+External API interaction: Ollama API
+AI interaction: Yes
+
+Function: OllamaOCRService.process_pdf
+File location: src/services/ollama_ocr_service.py:62-92
+Purpose: Process PDF file page by page for OCR
+Parameters: pdf_path (str)
+Return value: Dict with extracted_text, processing_time, model_name, pages_processed
+Internal logic explanation:
+1. Record start time
+2. Convert PDF to images using pdf2image
+3. Process each page individually
+4. Combine text with page breaks
+5. Calculate processing time
+6. Return result dictionary
+Dependencies used: pdf2image, io, internal methods
+Side effects: None
+Database interaction: None
+External API interaction: Ollama API
+AI interaction: Yes
+
+Function: OllamaOCRService._send_to_ollama
+File location: src/services/ollama_ocr_service.py:97-122
+Purpose: Send image to Ollama API with retry logic
+Parameters: image_base64 (str)
+Return value: Extracted text string
+Internal logic explanation:
+1. Construct JSON payload with model, prompt, and image
+2. Retry loop with configurable attempts
+3. HTTP POST request to Ollama
+4. Parse response and extract text
+5. Handle timeouts and connection errors
+6. Raise exception after all retries fail
+Dependencies used: requests, time, logging
+Side effects: Network requests
+Database interaction: None
+External API interaction: Ollama API
+AI interaction: Yes
+
+Function: OllamaOCRService._preprocess_image
+File location: src/services/ollama_ocr_service.py:127-137
+Purpose: Preprocess image file for better OCR accuracy
+Parameters: image_path (str)
+Return value: Processed image bytes
+Internal logic explanation:
+1. Check OpenCV availability
+2. Load image with OpenCV or PIL fallback
+3. Call array preprocessing method
+Dependencies used: cv2, PIL, numpy, internal methods
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: OllamaOCRService._preprocess_image_bytes
+File location: src/services/ollama_ocr_service.py:139-149
+Purpose: Preprocess image bytes for better OCR accuracy
+Parameters: image_bytes (bytes)
+Return value: Processed image bytes
+Internal logic explanation:
+1. Check OpenCV availability
+2. Decode bytes to numpy array
+3. Call array preprocessing method
+Dependencies used: cv2, numpy, internal methods
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: OllamaOCRService._preprocess_image_array
+File location: src/services/ollama_ocr_service.py:151-171
+Purpose: Preprocess image array for better OCR accuracy
+Parameters: image (numpy array)
+Return value: Processed image bytes
+Internal logic explanation:
+1. Resize if width > 1200px
+2. Convert to grayscale
+3. Apply adaptive threshold
+4. Convert to PNG bytes
+Dependencies used: cv2, numpy
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: ComparisonService.normalize_text
+File location: src/services/comparison_service.py:7-9
+Purpose: Normalize text by removing extra whitespace
+Parameters: text (str)
+Return value: Normalized text string
+Internal logic explanation: Strip text and collapse multiple spaces to single space
+Dependencies used: None
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: ComparisonService.compare_texts
+File location: src/services/comparison_service.py:11-31
+Purpose: Compare two texts for similarity and deviations
+Parameters: verified_text (str), production_text (str)
+Return value: Dict with match_percentage, deviations, status
+Internal logic explanation:
+1. Normalize both texts
+2. Calculate similarity ratio using difflib
+3. Generate word-level diff
+4. Extract deviations (added/removed words)
+5. Determine pass/fail status based on 95% threshold
+6. Return comparison results
+Dependencies used: difflib, json
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: Document.to_dict
+File location: src/models/database.py:35-42
+Purpose: Convert Document model to dictionary
+Parameters: self
+Return value: Dict with document fields
+Internal logic explanation: Extract model fields and format datetime as ISO string
+Dependencies used: None
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: OCRResult.to_dict
+File location: src/models/database.py:72-82
+Purpose: Convert OCRResult model to dictionary
+Parameters: self
+Return value: Dict with OCR result fields
+Internal logic explanation: Extract model fields and format datetime as ISO string
+Dependencies used: None
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: VerifiedControl.to_dict
+File location: src/models/database.py:115-122
+Purpose: Convert VerifiedControl model to dictionary
+Parameters: self
+Return value: Dict with verified control fields
+Internal logic explanation: Extract model fields and format datetime as ISO string
+Dependencies used: None
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: ComparisonResult.to_dict
+File location: src/models/database.py:156-166
+Purpose: Convert ComparisonResult model to dictionary
+Parameters: self
+Return value: Dict with comparison result fields
+Internal logic explanation: Extract model fields, parse JSON deviations, format datetime as ISO string
+Dependencies used: json
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService.__init__
+File location: src/services/medical_validation_service.py:25-42
+Purpose: Initialize medical validation service with regex patterns
+Parameters: self
+Return value: None
+Internal logic explanation: Define regex patterns for dosage, expiry, batch, manufacturer, and drug name validation
+Dependencies used: re, typing
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService.validate_text
+File location: src/services/medical_validation_service.py:44-78
+Purpose: Validate extracted medical text for structural authenticity
+Parameters: extracted_text (str)
+Return value: Dict with validation results and authenticity score
+Internal logic explanation:
+1. Validate input text type and content
+2. Perform individual validations (dosage, expiry, batch, manufacturer, drug name)
+3. Calculate authenticity score (20 points per validation)
+4. Determine structural authenticity (70+ points threshold)
+5. Return structured validation results
+Dependencies used: re, typing, internal methods
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._validate_dosage_format
+File location: src/services/medical_validation_service.py:80-84
+Purpose: Validate dosage format using regex patterns
+Parameters: text (str)
+Return value: Boolean indicating dosage format validity
+Internal logic explanation: Search text for dosage patterns (mg, ml, g, mcg, tablets, capsules)
+Dependencies used: re
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._validate_expiry_format
+File location: src/services/medical_validation_service.py:86-91
+Purpose: Validate expiry date format using regex patterns
+Parameters: text (str)
+Return value: Boolean indicating expiry date format validity
+Internal logic explanation: Search text for expiry date patterns (MM/YYYY, DD/MM/YYYY, Month YYYY)
+Dependencies used: re
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._validate_batch_number
+File location: src/services/medical_validation_service.py:93-99
+Purpose: Validate batch/lot number using label and number patterns
+Parameters: text (str)
+Return value: Boolean indicating batch number validity
+Internal logic explanation: Check for batch label presence and alphanumeric 6-12 character pattern
+Dependencies used: re
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._validate_manufacturer
+File location: src/services/medical_validation_service.py:101-106
+Purpose: Validate manufacturer presence using keyword patterns
+Parameters: text (str)
+Return value: Boolean indicating manufacturer presence
+Internal logic explanation: Search text for manufacturer keywords (Manufactured by, Marketed by, Distributed by)
+Dependencies used: re
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._validate_drug_name
+File location: src/services/medical_validation_service.py:108-113
+Purpose: Validate drug name format using heuristic patterns
+Parameters: text (str)
+Return value: Boolean indicating drug name format validity
+Internal logic explanation: Search text for capitalized word followed by dosage pattern
+Dependencies used: re
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+Function: MedicalValidationService._create_response
+File location: src/services/medical_validation_service.py:115-128
+Purpose: Create standardized response dictionary for validation results
+Parameters: validation result booleans, authenticity_score (int), is_structurally_authentic (bool)
+Return value: Dict with structured validation results
+Internal logic explanation: Assemble validation results into standardized response format
+Dependencies used: typing
+Side effects: None
+Database interaction: None
+External API interaction: None
+AI interaction: None
+
+6. AUTHENTICATION & SECURITY
+
+JWT / session handling: None implemented
+
+Middleware: Only Flask-CORS for cross-origin requests
+
+Role system: None implemented
+
+Password handling: None implemented
+
+Input validation:
+- File upload validation (presence, filename, extension)
+- JSON request validation for verified controls
+- Field validation (required fields, status values)
+- Path parameter validation through get_or_404
+
+CORS handling: Flask-CORS enabled for all origins
+
+Rate limiting: None implemented
+
+7. CONFIGURATION & ENVIRONMENT
+
+Environment variables:
+- SECRET_KEY: Flask secret key (default: dev-secret-key-change-in-production)
+- DATABASE_URI: Database connection string (default: sqlite:///ocr_compliance.db)
+- UPLOAD_FOLDER: File upload directory (default: uploads)
+- MAX_CONTENT_LENGTH: Maximum upload size (default: 16MB)
+- OCR_PRIMARY_ENGINE: Primary OCR engine (default: ollama)
+- OCR_FALLBACK_ENGINE: Fallback OCR engine (default: tesseract)
+- OLLAMA_ENABLED: Enable Ollama OCR (default: true)
+- OLLAMA_ENDPOINT: Ollama server URL (default: http://localhost:11434)
+- OLLAMA_MODEL: Ollama model name (default: glm-ocr:latest)
+- OLLAMA_TIMEOUT: Ollama request timeout (default: 30)
+- TESSERACT_CMD: Tesseract executable path
+- OFFLINE_MODE: Offline operation mode (default: false)
+
+Config files: src/config/config.py with environment-based configuration classes
+
+Third-party integrations:
+- Ollama: OCR processing via HTTP API
+- Poppler: PDF rendering for Windows
+- Tesseract: Fallback OCR engine
+
+Secret handling strategy: Environment variables with python-dotenv loading
+
+8. DEPENDENCY ANALYSIS
+
+From requirements.txt:
+
+Flask==3.0.0: Web framework for API server and routing
+Flask-CORS==4.0.0: Cross-origin resource sharing for API access
+Flask-SQLAlchemy==3.1.1: ORM integration for Flask with database operations
+SQLAlchemy==2.0.23: Database toolkit and ORM implementation
+Werkzeug==3.0.1: WSGI utilities used by Flask
+
+pytesseract==0.3.10: Tesseract OCR Python wrapper (fallback engine)
+Pillow==10.1.0: Image processing library for file handling and preprocessing
+
+PyPDF2==3.0.1: PDF file operations and manipulation
+pdf2image==1.16.3: Convert PDF pages to images for OCR processing
+
+opencv-python==4.8.1.78: Computer vision library for image preprocessing
+numpy==1.26.2: Numerical computing library for image array operations
+
+python-dotenv==1.0.0: Environment variable management from .env files
+
+textblob==0.19.0: Text processing and NLP utilities (not actively used)
+langdetect==1.0.9: Language detection library (not actively used)
+reportlab==4.4.7: PDF generation library (not actively used)
+requests==2.32.5: HTTP client library for Ollama API calls
+
+pytest==7.4.3: Testing framework for unit and integration tests
+hypothesis==6.92.1: Property-based testing framework
+psutil==5.9.8: System and process monitoring utilities
+
+9. APPLICATION EXECUTION FLOW
+
+App startup:
+1. Python imports and module loading
+2. Windows Poppler path detection and environment setup
+3. Flask application instance creation
+4. CORS middleware registration
+5. Configuration loading from hardcoded values
+6. Database initialization with SQLAlchemy
+7. Upload directory creation
+8. Blueprint registration for API routes
+9. Global error handler registration
+10. Database table creation if not exists
+11. Development server startup on localhost:5000
+
+User request enters system:
+1. HTTP request received by Flask application
+2. Route matching against registered blueprints
+3. Request validation and parameter extraction
+4. Business logic execution in services layer
+5. Database operations if required
+6. Response formatting and JSON serialization
+7. HTTP response returned to client
+
+Validation:
+- File upload validation (presence, type, size)
+- JSON request validation for POST/PUT endpoints
+- Path parameter validation through ORM queries
+- Field-specific validation (required fields, allowed values)
+
+Business logic:
+- OCR processing with Ollama or Tesseract
+- Text preprocessing and normalization
+- Document verification and comparison
+- Similarity scoring and deviation analysis
+
+Database interaction:
+- ORM model creation and retrieval
+- Transaction management with commit/rollback
+- Pagination for list endpoints
+- Cascade deletion for related records
+
+Ollama model call:
+- Image preprocessing and base64 encoding
+- HTTP POST to Ollama API endpoint
+- Response parsing and text extraction
+- Retry logic for failed requests
+
+Response formatting:
+- Success/error status indicators
+- Data serialization with to_dict() methods
+- HTTP status codes appropriate to operations
+- CORS headers for cross-origin requests
+
+10. ERROR HANDLING STRATEGY
+
+Try/except patterns: Generic exception handling in all route endpoints with database rollback
+
+Custom exceptions: None defined
+
+Global exception handlers: Flask app.errorhandler(Exception) catches all exceptions and returns JSON error format
+
+Logging approach: Basic logging configuration in OllamaOCRService with warning levels
+
+AI failure handling: Retry logic with configurable attempts and delays, fallback to Tesseract at route level
+
+11. PERFORMANCE OBSERVATIONS
+
+Blocking operations:
+- Synchronous HTTP requests to Ollama API
+- File I/O operations for temporary files
+- PDF to image conversion with pdf2image
+- Image preprocessing with OpenCV
+
+Async usage: None implemented (synchronous Flask application)
+
+Potential bottlenecks:
+- Ollama API response time (especially for large images)
+- PDF processing with multiple pages
+- File upload size limitations (16MB)
+- Single-threaded request handling
+
+AI latency considerations:
+- Long timeout configured (600s) for CPU-friendly processing
+- Retry logic adds delay for failed requests
+- No streaming or async processing implemented
+
+12. SCALABILITY ANALYSIS
+
+Horizontal scaling capability: Limited by SQLite database and file system storage
+
+Stateless/stateful components:
+- Stateless: Flask application, OCR processing
+- Stateful: SQLite database, file uploads
+
+AI request concurrency handling: Single-threaded processing, no connection pooling or request queuing
+
+13. POTENTIAL RISKS (Based Strictly on Code)
+
+Security weaknesses:
+- No authentication or authorization mechanisms
+- CORS enabled for all origins
+- No input sanitization beyond basic validation
+- Hardcoded secret key in development
+- File upload without virus scanning
+
+Performance risks:
+- Synchronous processing blocks request handling
+- Large file uploads could exhaust memory
+- No rate limiting on API endpoints
+- Single SQLite database limits concurrent access
+
+Logical vulnerabilities:
+- No transaction isolation for concurrent operations
+- Temporary file cleanup could fail
+- No validation of extracted text content
+- Comparison logic assumes text similarity equals compliance
+
+Architectural risks:
+- Single point of failure with Ollama dependency
+- No health checks for external services
+- Limited error recovery mechanisms
+- No monitoring or observability features
+
+Documentation generated strictly from provided source code. No assumptions beyond visible implementation.
+
+14. GROQ VALIDATION SERVICE IMPLEMENTATION
+
+Date Added: February 26, 2026
+
+Purpose:
+The Groq Validation Service provides AI-powered pharmaceutical label compliance validation using Groq's cloud-based LLM models. This service extends the existing OCR capabilities by adding intelligent validation and risk assessment for extracted pharmaceutical text.
+
+Implementation Details:
+
+New Service Created:
+- File: src/services/groq_validation_service.py
+- Class: GroqValidationService
+- Purpose: Pharmaceutical compliance validation using Groq API
+
+Key Features:
+- Structured field extraction (drug name, strength, batch numbers, dates)
+- Compliance validation with risk assessment (LOW/MEDIUM/HIGH)
+- Confidence scoring (0-100 scale)
+- Missing field detection
+- Serialization detection (barcode/QR codes)
+- Manufacturing vs expiry date validation
+- License number validation
+- Format validation checks
+
+API Configuration:
+- Provider: Groq Cloud API
+- Model: llama-3.1-8b-instant (current, non-deprecated)
+- Temperature: 0 (deterministic output)
+- API Endpoint: https://api.groq.com/openai/v1/chat/completions
+- Authentication: Bearer token (GROQ_API_KEY)
+
+New Route Added:
+- File: src/routes/validation_routes.py
+- Endpoint: POST /api/validate-text
+- Request Body: {"text": "extracted pharmaceutical text"}
+- Response: Structured JSON validation result
+
+Response Schema:
+{
+  "drug_name": "string",
+  "strength": "string", 
+  "batch_number": "string",
+  "manufacturing_date": "string",
+  "expiry_date": "string",
+  "manufacturer": "string",
+  "license_number": "string|null",
+  "serialization_present": boolean,
+  "missing_fields": ["string"],
+  "format_valid": boolean,
+  "risk_level": "LOW|MEDIUM|HIGH",
+  "confidence_score": number,
+  "analysis_summary": "string"
+}
+
+Integration Steps:
+1. Created GroqValidationService class with API integration
+2. Implemented validation route with error handling
+3. Registered validation blueprint in app.py with /api prefix
+4. Added GROQ_API_KEY to environment configuration
+5. Updated .env.example with Groq configuration template
+6. Implemented JSON parsing with regex fallback for robust response handling
+
+Error Handling:
+- Groq API error responses with detailed error messages
+- JSON parsing with regex extraction for malformed responses
+- Fallback handling for deprecated models
+- Comprehensive exception handling with logging
+
+Testing Results:
+- Simple validation test: Paracetamol 500mg sample → MEDIUM risk, 80% confidence
+- Full label validation: Complete pharmaceutical label → LOW risk, 90% confidence
+- Successfully extracts all required fields and provides accurate risk assessment
+
+Configuration Requirements:
+- GROQ_API_KEY environment variable must be set
+- Internet connectivity required for Groq API access
+- Model selection may need updates based on Groq's available models
+
+Dependencies Added:
+- requests library (already present)
+- json library (standard library)
+- os library (standard library)
+- re library (standard library)
+
+Security Considerations:
+- API key stored in environment variables
+- Input validation for text content
+- Error messages sanitized for API responses
+- No sensitive data logged in debug output
+
+Performance Characteristics:
+- API response time: ~2-5 seconds per validation
+- Concurrent requests: Limited by Groq API rate limits
+- Memory usage: Minimal, stateless service
+- Error recovery: Automatic retry with different models if deprecated
+
+Future Enhancements:
+- Batch validation for multiple labels
+- Custom validation rules configuration
+- Integration with verified controls database
+- Historical validation tracking
+- Compliance report generation
