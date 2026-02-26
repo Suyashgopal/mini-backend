@@ -2,6 +2,10 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import os
 import platform
+from dotenv import load_dotenv
+
+# Load environment variables early
+load_dotenv()
 
 # -----------------------------
 # Windows Poppler Setup (PDF)
@@ -63,8 +67,10 @@ app.register_blueprint(validation_bp)
 # -----------------------------
 @app.route("/health", methods=["GET"])
 def health_check():
+    from services.ocr_engine import ocr_engine
     return jsonify({
         "status": "healthy",
+        "ocr_engine": ocr_engine.active_engine,   # "gemini" | "ollama" | "none"
         "message": "Label Verification API running"
     }), 200
 
