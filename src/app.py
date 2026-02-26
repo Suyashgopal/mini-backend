@@ -70,7 +70,7 @@ def health_check():
     from services.ocr_engine import ocr_engine
     return jsonify({
         "status": "healthy",
-        "ocr_engine": ocr_engine.active_engine,   # "gemini" | "ollama" | "none"
+        "ocr_engine": ocr_engine.active_engine,   # "ocr.space" | "ollama" | "none"
         "message": "Label Verification API running"
     }), 200
 

@@ -1,8 +1,8 @@
 """
 ocr_engine.py
 
-Unified OCR engine: tries Gemini first, automatically falls back
-to Ollama if Gemini is unavailable or fails.
+Unified OCR engine: tries OCR.space first, automatically falls back
+to Ollama if OCR.space is unavailable or fails.
 
 Usage (in routes or anywhere else):
     from services.ocr_engine import ocr_engine
@@ -21,31 +21,31 @@ logger = logging.getLogger(__name__)
 
 class OCREngine:
     """
-    Facade that routes OCR requests to Gemini (primary) or
+    Facade that routes OCR requests to OCR.space (primary) or
     Ollama (fallback), decided at startup based on env vars.
     """
 
     def __init__(self):
-        self._gemini: Optional[object] = None
+        self._ocrspace: Optional[object] = None
         self._ollama: Optional[object] = None
         self._primary: str = "none"
         self._init_engines()
 
     def _init_engines(self):
-        # ── Try Gemini first ──────────────────────────────────────────
-        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-        logger.info("OCREngine: GEMINI_API_KEY found: %s", bool(gemini_key))
-        if gemini_key:
+        # ── Try OCR.space first ──────────────────────────────────────────
+        ocrspace_key = os.getenv("OCRSPACE_API_KEY", "").strip()
+        logger.info("OCREngine: OCRSPACE_API_KEY found: %s", bool(ocrspace_key))
+        if ocrspace_key:
             try:
-                from services.gemini_ocr_service import GeminiOCRService
-                logger.info("OCREngine: Importing GeminiOCRService successful")
-                self._gemini = GeminiOCRService()
-                self._primary = "gemini"
-                logger.info("OCREngine: PRIMARY = Gemini 2.0 Flash")
+                from services.ocrspace_ocr_service import OCRSpaceOCRService
+                logger.info("OCREngine: Importing OCRSpaceOCRService successful")
+                self._ocrspace = OCRSpaceOCRService()
+                self._primary = "ocr.space"
+                logger.info("OCREngine: PRIMARY = OCR.space")
             except Exception as exc:
-                logger.warning("OCREngine: Gemini init failed (%s) — will use Ollama only.", exc)
+                logger.warning("OCREngine: OCR.space init failed (%s) — will use Ollama only.", exc)
         else:
-            logger.info("OCREngine: GEMINI_API_KEY not set — Gemini disabled.")
+            logger.info("OCREngine: OCRSPACE_API_KEY not set — OCR.space disabled.")
 
         # ── Always initialise Ollama as backup ────────────────────────
         try:
@@ -65,7 +65,7 @@ class OCREngine:
         if self._primary == "none":
             logger.error(
                 "OCREngine: NO OCR engine available! "
-                "Set GEMINI_API_KEY or ensure Ollama is running."
+                "Set OCRSPACE_API_KEY or ensure Ollama is running."
             )
 
     # ------------------------------------------------------------------
@@ -80,7 +80,7 @@ class OCREngine:
 
     @property
     def active_engine(self) -> str:
-        """Returns 'gemini', 'ollama', or 'none' — useful for health endpoint."""
+        """Returns 'ocr.space', 'ollama', or 'none' — useful for health endpoint."""
         return self._primary
 
     # ------------------------------------------------------------------
@@ -88,18 +88,18 @@ class OCREngine:
     # ------------------------------------------------------------------
 
     def _run(self, method: str, file_path: str) -> Dict[str, Any]:
-        """Try Gemini → if it raises, log and try Ollama → if both fail, raise."""
+        """Try OCR.space → if it raises, log and try Ollama → if both fail, raise."""
         errors = []
 
-        if self._gemini is not None:
+        if self._ocrspace is not None:
             try:
-                result = getattr(self._gemini, method)(file_path)
-                result["engine_used"] = "gemini"
+                result = getattr(self._ocrspace, method)(file_path)
+                result["engine_used"] = "ocr.space"
                 return result
             except Exception as exc:
-                errors.append(f"Gemini: {exc}")
+                errors.append(f"OCR.space: {exc}")
                 logger.warning(
-                    "OCREngine: Gemini failed for %s (%s) — falling back to Ollama.",
+                    "OCREngine: OCR.space failed for %s (%s) — falling back to Ollama.",
                     file_path, exc,
                 )
 
