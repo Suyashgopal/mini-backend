@@ -113,7 +113,7 @@ app.config["MAX_CONTENT_LENGTH"]         = int(os.getenv("MAX_UPLOAD_MB", "16"))
 # which means it only ran when you started with "python app.py".
 # If you ever use gunicorn (production server), __main__ never runs → no tables → crash.
 # FIX: Run it inside app_context() at module level so it always runs on startup.
-from config.database import db  # noqa: E402  (import after app creation is intentional)
+from configration.database import db  # noqa: E402  (import after app creation is intentional)
 db.init_app(app)
 
 with app.app_context():

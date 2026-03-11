@@ -1,4 +1,4 @@
-from config.database import db
+from configration.database import db
 from datetime import datetime
 import json
 

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmaceutical Validation Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin: 10px 0;
+            padding: 10px;
+            font-family: monospace;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            color: #007bff;
+            margin: 10px 0;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .field {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border-left: 3px solid #007bff;
+        }
+        .field label {
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+        }
+        .risk-low { border-left-color: #28a745; }
+        .risk-medium { border-left-color: #ffc107; }
+        .risk-high { border-left-color: #dc3545; }
+        .error {
+            color: #dc3545;
+            padding: 10px;
+            background: #f8d7da;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Pharmaceutical Label Validation Test</h1>
+        
+        <p>This page tests the Groq validation endpoint directly.</p>
+        
+        <h3>Sample Label Text:</h3>
+        <textarea id="labelText">PHARMACEUTICAL LABEL
+
+Drug Name: ACETAMINOPHEN 500mg
+Batch Number: BN-2024-001234
+Expiry Date: 12/2025
+Manufacturer: Pfizer Inc.
+NDC: 0071-0155-23
+
+Dosage: Take 1 tablet every 4-6 hours as needed
+Storage: Store at room temperature</textarea>
+        
+        <button id="validateBtn" onclick="validateLabel()">
+            🔍 Validate Label
+        </button>
+        
+        <div id="loading" class="loading" style="display: none;">
+            ⏳ Running validation... Please wait...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="results" class="results" style="display: none;">
+            <h3>✅ Validation Results:</h3>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <script>
+        async function validateLabel() {
+            const text = document.getElementById('labelText').value;
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const resultsDiv = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+            const validateBtn = document.getElementById('validateBtn');
+            
+            // Reset UI
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+            validateBtn.disabled = true;
+            
+            try {
+                console.log('Sending validation request...');
+                const startTime = Date.now();
+                
+                const response = await fetch('http://localhost:5000/api/validation/validate-text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const elapsed = Date.now() - startTime;
+                console.log(`Response received in ${elapsed}ms`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Validation result:', data);
+                
+                // Display results
+                displayResults(data);
+                
+            } catch (error) {
+                console.error('Validation error:', error);
+                errorDiv.textContent = `❌ Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+            } finally {
+                loadingDiv.style.display = 'none';
+                validateBtn.disabled = false;
+            }
+        }
+        
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+            
+            const riskClass = `risk-${data.risk_level.toLowerCase()}`;
+            
+            resultsContent.innerHTML = `
+                <div class="field">
+                    <label>Drug Name:</label>
+                    <span>${data.drug_name || 'Not detected'}</span>
+                </div>
+                <div class="field">
+                    <label>Strength:</label>
+                    <span>${data.strength || 'Not detected'}</span>
+                </div>
+                <div class="field">
+                    <label>Batch Number:</label>
+                    <span>${data.batch_number || 'Not detected'}</span>
+                </div>
+                <div class="field">
+                    <label>Expiry Date:</label>
+                    <span>${data.expiry_date || 'Not detected'}</span>
+                </div>
+                <div class="field">
+                    <label>Manufacturer:</label>
+                    <span>${data.manufacturer || 'Not detected'}</span>
+                </div>
+                <div class="field">
+                    <label>License Number:</label>
+                    <span>${data.license_number || 'Not detected'}</span>
+                </div>
+                <div class="field ${riskClass}">
+                    <label>Risk Level:</label>
+                    <span><strong>${data.risk_level}</strong></span>
+                </div>
+                <div class="field">
+                    <label>Confidence Score:</label>
+                    <span>${data.confidence_score}%</span>
+                </div>
+                <div class="field">
+                    <label>Format Valid:</label>
+                    <span>${data.format_valid ? '✓ Yes' : '✗ No'}</span>
+                </div>
+                ${data.missing_fields.length > 0 ? `
+                <div class="field">
+                    <label>Missing Fields:</label>
+                    <span>${data.missing_fields.join(', ')}</span>
+                </div>
+                ` : ''}
+                <div class="field">
+                    <label>Analysis:</label>
+                    <span>${data.analysis_summary}</span>
+                </div>
+            `;
+            
+            resultsDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

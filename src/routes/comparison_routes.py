@@ -17,7 +17,7 @@ import logging
 
 from flask import Blueprint, jsonify
 
-from config.database import db
+from configration.database import db
 from models.database import ComparisonResult, OCRResult, VerifiedControl
 from services.comparison_service import ComparisonService
 from services.medical_validation_service import MedicalValidationService

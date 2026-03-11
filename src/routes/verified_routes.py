@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from config.database import db
+from configration.database import db
 from models.database import VerifiedControl, OCRResult
 
 bp = Blueprint("verified", __name__, url_prefix="/api/verified")

@@ -23,6 +23,7 @@ from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
 from services.ocr_engine import ocr_engine
+from services.pharma_field_extractor import pharma_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,14 @@ def ocr_image():
             tmp_path = tmp.name
 
         result = ocr_engine.process_image(tmp_path)
+        
+        # Extract pharmaceutical fields from the OCR text
+        extracted_text = result.get("extracted_text", "")
+        pharma_fields = pharma_extractor.extract_fields(extracted_text)
+        
+        # Merge pharmaceutical fields into the result
+        result.update(pharma_fields)
+        
         return jsonify({"success": True, "data": result}), 200
 
     except Exception as exc:
@@ -102,6 +111,14 @@ def ocr_pdf():
             tmp_path = tmp.name
 
         result = ocr_engine.process_pdf(tmp_path)
+        
+        # Extract pharmaceutical fields from the OCR text
+        extracted_text = result.get("extracted_text", "")
+        pharma_fields = pharma_extractor.extract_fields(extracted_text)
+        
+        # Merge pharmaceutical fields into the result
+        result.update(pharma_fields)
+        
         return jsonify({"success": True, "data": result}), 200
 
     except Exception as exc:
