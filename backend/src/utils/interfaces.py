@@ -6,7 +6,7 @@ class BaseOCRService(ABC):
     """
     Base interface for OCR services.
 
-    All OCR engines (Ollama, Tesseract, etc.)
+    All OCR engines (Ollama, etc.)
     must implement these methods.
     """
 

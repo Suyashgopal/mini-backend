@@ -61,7 +61,7 @@ class OCRResult(db.Model):
     extracted_text = db.Column(db.Text, nullable=False)
     translated_text = db.Column(db.Text, nullable=False)
 
-    ocr_engine = db.Column(db.String(50))     # ollama / tesseract
+    ocr_engine = db.Column(db.String(50))     # ollama
     model_name = db.Column(db.String(100))    # llava, mistral, etc
     processing_time = db.Column(db.Float)
     processed_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -152,6 +152,13 @@ class ComparisonResult(db.Model):
     status = db.Column(db.String(50))  # PASS / FAIL
 
     compared_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Audit fields for tamper detection and duplicate detection
+    audit_hash = db.Column(db.String(64))  # SHA-256 hash for tamper detection
+    content_hash = db.Column(db.String(64))  # SHA-256 hash for duplicate detection
+    submitter_ip = db.Column(db.String(45))  # IPv4 or IPv6 address
+    final_decision = db.Column(db.String(50))  # VALID / SUSPICIOUS
+    authenticity_score = db.Column(db.Integer)  # Medical validation score
 
     def to_dict(self):
         return {
@@ -163,4 +170,9 @@ class ComparisonResult(db.Model):
             if self.deviations else [],
             "status": self.status,
             "compared_at": self.compared_at.isoformat(),
+            "audit_hash": self.audit_hash,
+            "content_hash": self.content_hash,
+            "submitter_ip": self.submitter_ip,
+            "final_decision": self.final_decision,
+            "authenticity_score": self.authenticity_score,
         }

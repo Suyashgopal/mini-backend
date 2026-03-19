@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏥 Medicine Recognition Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .upload-section {
+            background: #f8f9ff;
+            border: 3px dashed #4facfe;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #00f2fe;
+            background: #f0f4ff;
+        }
+
+        .upload-section.dragover {
+            border-color: #00f2fe;
+            background: #e8f2ff;
+            transform: scale(1.02);
+        }
+
+        .upload-input {
+            display: none;
+        }
+
+        .upload-button {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+        }
+
+        .upload-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .processing {
+            display: none;
+            text-align: center;
+            padding: 30px;
+            background: #fff3cd;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .processing.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4facfe;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .ocr-section, .medicine-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .section-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ocr-text {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .medicine-info {
+            display: grid;
+            gap: 15px;
+        }
+
+        .info-field {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #4facfe;
+            transition: all 0.3s ease;
+        }
+
+        .info-field:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .field-label {
+            font-weight: bold;
+            color: #555;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .field-value {
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .field-value.not-detected {
+            color: #999;
+            font-style: italic;
+        }
+
+        .validation-status {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 10px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+
+        .status-valid {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+
+        .status-suspicious {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeaa7;
+        }
+
+        .confidence-bar {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b6b 0%, #feca57 50%, #48dbfb 100%);
+            border-radius: 10px;
+            transition: width 0.8s ease;
+        }
+
+        .confidence-text {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .missing-fields {
+            margin-top: 15px;
+        }
+
+        .missing-field {
+            display: inline-block;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            margin: 3px;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .processing-steps {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: #f8f9fa;
+            font-size: 0.9em;
+        }
+
+        .step.active {
+            background: #4facfe;
+            color: white;
+        }
+
+        .step.completed {
+            background: #28a745;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .processing-steps {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 Medicine Recognition Test</h1>
+            <p>Upload a pharmaceutical label image to extract and validate medicine information</p>
+        </div>
+
+        <div class="main-content">
+            <div class="upload-section" id="uploadSection">
+                <input type="file" id="imageInput" class="upload-input" accept="image/*">
+                <button class="upload-button" onclick="document.getElementById('imageInput').click()">
+                    📸 Choose Image
+                </button>
+                <div class="upload-text">
+                    Or drag and drop a pharmaceutical label image here<br>
+                    <small>Supported formats: JPG, PNG, TIFF, BMP</small>
+                </div>
+            </div>
+
+            <div class="processing" id="processing">
+                <div class="spinner"></div>
+                <h3>Processing your image...</h3>
+                <div class="processing-steps">
+                    <div class="step" id="step1">🔍 Extracting Text</div>
+                    <div class="step" id="step2">🤖 OpenRouter Analysis</div>
+                    <div class="step" id="step3">✅ Complete</div>
+                </div>
+            </div>
+
+            <div class="results" id="results">
+                <div class="results-grid">
+                    <div class="ocr-section">
+                        <div class="section-title">
+                            🔍 <span>OCR Extracted Text</span>
+                        </div>
+                        <div class="ocr-text" id="ocrText"></div>
+                        <div style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                            Processing time: <span id="processingTime"></span>s
+                        </div>
+                    </div>
+
+                    <div class="medicine-section">
+                        <div class="section-title">
+                            💊 <span>Medicine Information</span>
+                        </div>
+                        <div class="medicine-info">
+                            <div class="info-field">
+                                <div class="field-label">Medicine Name</div>
+                                <div class="field-value" id="medicineName"></div>
+                            </div>
+                            <div class="info-field">
+                                <div class="field-label">Strength</div>
+                                <div class="field-value" id="strength"></div>
+                            </div>
+                            <div class="info-field">
+                                <div class="field-label">Batch Number</div>
+                                <div class="field-value" id="batchNumber"></div>
+                            </div>
+                            <div class="info-field">
+                                <div class="field-label">Expiry Date</div>
+                                <div class="field-value" id="expiryDate"></div>
+                            </div>
+                            <div class="info-field">
+                                <div class="field-label">Manufacturer</div>
+                                <div class="field-value" id="manufacturer"></div>
+                            </div>
+                            <div class="info-field">
+                                <div class="field-label">License Number</div>
+                                <div class="field-value" id="licenseNumber"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="validation-status">
+                    <div class="status-badge" id="statusBadge"></div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confidenceFill"></div>
+                    </div>
+                    <div class="confidence-text">
+                        Confidence: <span id="confidenceScore"></span>%
+                    </div>
+                    <div id="analysisText" style="margin-top: 15px; font-style: italic;"></div>
+                    <div class="missing-fields" id="missingFields"></div>
+                </div>
+            </div>
+
+            <div class="error" id="error" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const uploadSection = document.getElementById('uploadSection');
+        const processing = document.getElementById('processing');
+        const results = document.getElementById('results');
+        const error = document.getElementById('error');
+
+        // Drag and drop functionality
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragover');
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processImage(files[0]);
+            }
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processImage(e.target.files[0]);
+            }
+        });
+
+        async function processImage(file) {
+            try {
+                // Reset UI
+                hideAll();
+                processing.classList.add('show');
+                
+                // Step 1: OCR Extraction
+                document.getElementById('step1').classList.add('active');
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const ocrResponse = await fetch('http://localhost:5000/api/ocr/image', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!ocrResponse.ok) {
+                    throw new Error(`OCR failed: ${ocrResponse.status}`);
+                }
+                
+                const ocrResult = await ocrResponse.json();
+                
+                if (!ocrResult.success) {
+                    throw new Error(ocrResult.error || 'OCR extraction failed');
+                }
+                
+                // Step 1 complete
+                document.getElementById('step1').classList.remove('active');
+                document.getElementById('step1').classList.add('completed');
+                document.getElementById('step2').classList.add('active');
+                
+                // Step 2: Medicine Recognition (OpenRouter API)
+                const validationResponse = await fetch('http://localhost:5000/api/validation/validate-text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: ocrResult.data.extracted_text
+                    })
+                });
+                
+                if (!validationResponse.ok) {
+                    throw new Error(`Validation failed: ${validationResponse.status}`);
+                }
+                
+                const validationResult = await validationResponse.json();
+                
+                // Step 2 complete
+                document.getElementById('step2').classList.remove('active');
+                document.getElementById('step2').classList.add('completed');
+                document.getElementById('step3').classList.add('active');
+                
+                // Small delay for effect
+                setTimeout(() => {
+                    document.getElementById('step3').classList.remove('active');
+                    document.getElementById('step3').classList.add('completed');
+                    
+                    // Display results
+                    displayResults(ocrResult.data, validationResult);
+                }, 500);
+                
+            } catch (err) {
+                console.error('Error:', err);
+                hideAll();
+                error.textContent = `❌ Error: ${err.message}`;
+                error.style.display = 'block';
+            }
+        }
+
+        function displayResults(ocrData, medicineData) {
+            // Hide processing, show results
+            processing.classList.remove('show');
+            results.classList.add('show');
+            
+            // OCR Results
+            document.getElementById('ocrText').textContent = ocrData.extracted_text || 'No text extracted';
+            document.getElementById('processingTime').textContent = ocrData.processing_time || 'N/A';
+            
+            // Medicine Information
+            document.getElementById('medicineName').textContent = medicineData.drug_name || 'Not detected';
+            document.getElementById('medicineName').className = medicineData.drug_name ? 'field-value' : 'field-value not-detected';
+            
+            document.getElementById('strength').textContent = medicineData.strength || 'Not detected';
+            document.getElementById('strength').className = medicineData.strength ? 'field-value' : 'field-value not-detected';
+            
+            document.getElementById('batchNumber').textContent = medicineData.batch_number || 'Not detected';
+            document.getElementById('batchNumber').className = medicineData.batch_number ? 'field-value' : 'field-value not-detected';
+            
+            document.getElementById('expiryDate').textContent = medicineData.expiry_date || 'Not detected';
+            document.getElementById('expiryDate').className = medicineData.expiry_date ? 'field-value' : 'field-value not-detected';
+            
+            document.getElementById('manufacturer').textContent = medicineData.manufacturer || 'Not detected';
+            document.getElementById('manufacturer').className = medicineData.manufacturer ? 'field-value' : 'field-value not-detected';
+            
+            document.getElementById('licenseNumber').textContent = medicineData.license_number || 'Not detected';
+            document.getElementById('licenseNumber').className = medicineData.license_number ? 'field-value' : 'field-value not-detected';
+            
+            // Validation Status
+            const statusBadge = document.getElementById('statusBadge');
+            const riskLevel = medicineData.risk_level || 'UNKNOWN';
+            const formatValid = medicineData.format_valid;
+            
+            if (riskLevel === 'LOW' && formatValid) {
+                statusBadge.textContent = '✅ VALID MEDICINE';
+                statusBadge.className = 'status-badge status-valid';
+            } else if (riskLevel === 'MEDIUM') {
+                statusBadge.textContent = '⚠️ NEEDS REVIEW';
+                statusBadge.className = 'status-badge status-warning';
+            } else {
+                statusBadge.textContent = '❌ SUSPICIOUS';
+                statusBadge.className = 'status-badge status-suspicious';
+            }
+            
+            // Confidence
+            const confidence = medicineData.confidence_score || 0;
+            document.getElementById('confidenceScore').textContent = confidence;
+            document.getElementById('confidenceFill').style.width = confidence + '%';
+            
+            // Analysis
+            document.getElementById('analysisText').textContent = medicineData.analysis_summary || 'No analysis available';
+            
+            // Missing Fields
+            const missingFields = medicineData.missing_fields || [];
+            const missingFieldsContainer = document.getElementById('missingFields');
+            if (missingFields.length > 0) {
+                missingFieldsContainer.innerHTML = '<strong>Missing Fields:</strong><br>' + 
+                    missingFields.map(field => `<span class="missing-field">${field}</span>`).join('');
+            } else {
+                missingFieldsContainer.innerHTML = '<strong style="color: #28a745;">✅ All fields detected</strong>';
+            }
+        }
+
+        function hideAll() {
+            processing.classList.remove('show');
+            results.classList.remove('show');
+            error.style.display = 'none';
+            
+            // Reset steps
+            document.querySelectorAll('.step').forEach(step => {
+                step.classList.remove('active', 'completed');
+            });
+        }
+    </script>
+</body>
+</html>

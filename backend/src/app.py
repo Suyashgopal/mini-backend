@@ -143,12 +143,8 @@ app.register_blueprint(validation_bp)
 logger.info("All blueprints registered.")
 
 
-# ── Step 9: Import OCR engine once at module level ────────────────────────────
-# WHAT WAS WRONG: Original imported ocr_engine INSIDE the health_check function.
-# That means Python re-ran the import statement on every single health poll.
-# Python caches imports so it doesn't re-execute the file, but it's still
-# unnecessary work and bad practice. Import once at the top, use everywhere.
-from services.ocr_engine import ocr_engine  # noqa: E402
+# ── Step 9: OCR engine configuration ──────────────────────────────────────────
+# Using Ollama OCR service only for text extraction
 
 
 # ── Routes defined directly in app.py ────────────────────────────────────────
@@ -164,7 +160,7 @@ def health_check():
     """
     return jsonify({
         "status":     "healthy",
-        "ocr_engine": ocr_engine.active_engine,  # "gemini" | "ollama" | "none"
+        "ocr_engine": "ollama",  # Using Ollama GLM-OCR model
         "message":    "Label Verification API running",
     }), 200
 
@@ -184,6 +180,8 @@ def root():
             "/api/verified/",
             "/api/comparison/run/<control_id>/<ocr_result_id>",
             "/api/validation/validate-text",
+            "/api/validation/test-drug-detection",
+            "/api/validation/validate-with-reasoning",
         ],
     }), 200
 

@@ -1,18 +1,11 @@
 """
-ocr_routes.py — Fixed & hardened.
+ocr_routes.py — Simplified to use only Ollama OCR service.
 
-Bugs fixed:
-  1. OllamaOCRService instantiated at MODULE LEVEL — env vars must exist at import
-     time and service can never be reconfigured → moved to lazy initialisation via
-     get_ocr_service() which reads env vars at request time on first call.
-  2. /api/ocr/image accepted ANY file extension (including .pdf, .exe) → added
-     ALLOWED_IMAGE_EXTENSIONS whitelist check.
-  3. No Tesseract fallback — Ollama failure returned 500 with no recovery →
-     fallback is now wired into OllamaOCRService itself (see ollama_ocr_service.py);
-     route just catches and returns the error cleanly.
-  4. Temp file could leak if the server process was killed between NamedTemporaryFile
-     creation and the finally block (rare but possible) — added explicit delete=False
-     comment and ensured finally always runs os.remove safely.
+Changes:
+  1. Removed OCR engine abstraction layer
+  2. Removed OCR space and Tesseract references
+  3. Direct integration with Ollama OCR service only
+  4. Simplified error handling for single OCR provider
 """
 
 import logging
@@ -22,8 +15,7 @@ import tempfile
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
-from services.ocr_engine import ocr_engine
-from services.pharma_field_extractor import pharma_extractor
+from services.ollama_ocr_service import OllamaOCRService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +26,13 @@ ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "bmp", "tiff", "tif", "webp"}
 
 # ---------------------------------------------------------------------------
 # Lazy service singleton — reads env vars at first request, not at import time
+_ollama_service = None
+
+def get_ollama_service():
+    global _ollama_service
+    if _ollama_service is None:
+        _ollama_service = OllamaOCRService()
+    return _ollama_service
 
 def _extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lstrip(".").lower()
@@ -68,19 +67,12 @@ def ocr_image():
             file.save(tmp.name)
             tmp_path = tmp.name
 
-        result = ocr_engine.process_image(tmp_path)
-        
-        # Extract pharmaceutical fields from the OCR text
-        extracted_text = result.get("extracted_text", "")
-        pharma_fields = pharma_extractor.extract_fields(extracted_text)
-        
-        # Merge pharmaceutical fields into the result
-        result.update(pharma_fields)
-        
+        ollama_service = get_ollama_service()
+        result = ollama_service.process_image(tmp_path)
         return jsonify({"success": True, "data": result}), 200
 
     except Exception as exc:
-        logger.exception("Image OCR failed for file %s", filename)
+        logger.exception("Ollama OCR failed for file %s", filename)
         return jsonify({"success": False, "error": str(exc)}), 500
 
     finally:
@@ -110,19 +102,12 @@ def ocr_pdf():
             file.save(tmp.name)
             tmp_path = tmp.name
 
-        result = ocr_engine.process_pdf(tmp_path)
-        
-        # Extract pharmaceutical fields from the OCR text
-        extracted_text = result.get("extracted_text", "")
-        pharma_fields = pharma_extractor.extract_fields(extracted_text)
-        
-        # Merge pharmaceutical fields into the result
-        result.update(pharma_fields)
-        
+        ollama_service = get_ollama_service()
+        result = ollama_service.process_pdf(tmp_path)
         return jsonify({"success": True, "data": result}), 200
 
     except Exception as exc:
-        logger.exception("PDF OCR failed for file %s", filename)
+        logger.exception("Ollama PDF OCR failed for file %s", filename)
         return jsonify({"success": False, "error": str(exc)}), 500
 
     finally:

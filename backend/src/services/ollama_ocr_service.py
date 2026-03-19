@@ -6,7 +6,7 @@ Key improvements over original:
   - Adaptive image preprocessing: skip heavy CV2 pipeline for already-clean images
   - Reduced default timeout + per-request deadline instead of one giant timeout
   - Exponential back-off instead of fixed retry delay
-  - Lazy Tesseract fallback wired directly into this service (no round-trip to route layer)
+  - Direct Ollama integration with no external dependencies
   - hashlib-based in-memory cache to skip re-encoding identical images
   - Cleaner logging with structured context
 """
@@ -52,13 +52,6 @@ def _try_import_pdf2image():
     except ImportError:
         return None
 
-def _try_import_pytesseract():
-    try:
-        import pytesseract
-        return pytesseract
-    except ImportError:
-        return None
-
 
 # ---------------------------------------------------------------------------
 # Simple in-process image cache  (keyed by SHA-256 of raw bytes)
@@ -86,7 +79,7 @@ def _cache_set(sha: str, b64: str) -> None:
 # ---------------------------------------------------------------------------
 
 class OllamaOCRService:
-    """OCR service backed by an Ollama vision model with Tesseract fallback."""
+    """OCR service backed by an Ollama vision model."""
 
     DEFAULT_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     DEFAULT_MODEL    = os.getenv("OLLAMA_MODEL", "glm-ocr:latest")
@@ -106,7 +99,6 @@ class OllamaOCRService:
         max_retries:     int = 3,
         retry_delay:     float = 1.0,   # base delay; doubles on each retry (exp back-off)
         pdf_workers:     int = DEFAULT_PDF_WORKERS,
-        use_tesseract_fallback: bool = True,
     ):
         self.api_url   = f"{ollama_endpoint.rstrip('/')}/api/generate"
         self.model     = model_name
@@ -114,12 +106,10 @@ class OllamaOCRService:
         self.max_retries   = max_retries
         self.retry_delay   = retry_delay
         self.pdf_workers   = pdf_workers
-        self.use_tesseract_fallback = use_tesseract_fallback
 
         self._cv2, self._np = _try_import_cv2()
         self._Image          = _try_import_pil()
         self._convert_pdf    = _try_import_pdf2image()
-        self._tesseract      = _try_import_pytesseract() if use_tesseract_fallback else None
 
         logger.info(
             "OllamaOCRService ready | model=%s endpoint=%s timeout=%ss workers=%s",
@@ -218,10 +208,8 @@ class OllamaOCRService:
             _cache_set(sha, text)
             return text
         except Exception as ollama_err:  # noqa: BLE001
-            logger.warning("Ollama failed for %s (%s) — trying Tesseract fallback.", context, ollama_err)
-            if self._tesseract and self._Image:
-                return self._tesseract_fallback(image_bytes, context)
-            raise
+            logger.error("Ollama OCR failed for %s: %s", context, ollama_err)
+            raise RuntimeError(f"Ollama OCR extraction failed: {ollama_err}") from ollama_err
 
     def _send_to_ollama(self, image_base64: str, context: str = "") -> str:
         """POST to Ollama API with exponential back-off retry."""
@@ -335,19 +323,6 @@ class OllamaOCRService:
         if not success:
             raise RuntimeError("Failed to encode preprocessed image to PNG")
         return buf.tobytes()
-
-    # ------------------------------------------------------------------
-    # Tesseract fallback
-    # ------------------------------------------------------------------
-
-    def _tesseract_fallback(self, image_bytes: bytes, context: str = "") -> str:
-        """Use Tesseract to extract text when Ollama is unavailable."""
-        logger.info("Using Tesseract fallback for %s", context)
-        if self._Image is None:
-            raise RuntimeError("PIL is required for Tesseract fallback")
-        pil = self._Image.open(io.BytesIO(image_bytes))
-        text = self._tesseract.image_to_string(pil)
-        return text.strip()
 
     # ------------------------------------------------------------------
     # Utility

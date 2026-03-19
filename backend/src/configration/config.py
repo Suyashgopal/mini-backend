@@ -40,18 +40,12 @@ class Config:
     }
 
     # ---------------------------------------------------
-    # OCR ENGINE PRIORITY
+    # OCR ENGINE CONFIGURATION
     # ---------------------------------------------------
-    # Primary Engine
+    # Primary Engine (Ollama only)
     OCR_PRIMARY_ENGINE = os.getenv(
         "OCR_PRIMARY_ENGINE",
         "ollama"
-    )
-
-    # Fallback Engine
-    OCR_FALLBACK_ENGINE = os.getenv(
-        "OCR_FALLBACK_ENGINE",
-        "tesseract"
     )
 
     # ---------------------------------------------------
@@ -75,11 +69,6 @@ class Config:
     OLLAMA_TIMEOUT = int(
         os.getenv("OLLAMA_TIMEOUT", "30")
     )
-
-    # ---------------------------------------------------
-    # Tesseract Configuration
-    # ---------------------------------------------------
-    TESSERACT_CMD = os.getenv("TESSERACT_CMD")
 
     # ---------------------------------------------------
     # Offline Mode
